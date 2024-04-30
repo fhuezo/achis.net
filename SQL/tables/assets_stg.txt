@@ -1,0 +1,21 @@
+-- assets.assets_stg definition
+
+CREATE TABLE `assets_stg` (
+  `asset_stg_key` bigint NOT NULL AUTO_INCREMENT,
+  `blockNumber` int DEFAULT NULL,
+  `createdAt` varchar(50) DEFAULT NULL,
+  `tx_number` varchar(100) DEFAULT NULL,
+  `tx_in_block` int DEFAULT NULL,
+  `tx_creator` varchar(100) DEFAULT NULL,
+  `tx_creator_type` varchar(50) DEFAULT NULL,
+  `action_in_block` int DEFAULT NULL,
+  `tx_type` varchar(100) DEFAULT NULL,
+  `tx_validation_code` varchar(50) DEFAULT NULL,
+  `tx_validation_enum` varchar(100) DEFAULT NULL,
+  `bk_isconfig` varchar(10) DEFAULT NULL,
+  `tx_detail` json DEFAULT NULL,
+  `tx_ccresponse` json DEFAULT NULL,
+  `tx_write` json DEFAULT NULL,
+  `tx_detail_str` varchar(200) DEFAULT NULL,
+  PRIMARY KEY (`asset_stg_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

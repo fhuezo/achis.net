@@ -1,0 +1,8 @@
+-- assets.dim_asset_rarity definition
+
+CREATE TABLE `dim_asset_rarity` (
+  `asset_rarity_key` int NOT NULL AUTO_INCREMENT,
+  `asset_rarity` varchar(100) DEFAULT NULL,
+  PRIMARY KEY (`asset_rarity_key`),
+  KEY `ix_asset_rarity_name` (`asset_rarity`)
+) ENGINE=InnoDB AUTO_INCREMENT=17 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

@@ -1,0 +1,227 @@
+#!/usr/bin/env python
+#from turtle import right
+import requests
+from datetime import datetime, timedelta
+#from collections import OrderedDict
+import json
+import time
+import csv
+import mysql.connector
+import re
+from mysql.connector import Error
+
+#Functions
+def invalid_json(json_str):
+    try:
+        # Try to parse the JSON string
+        json.loads(json_str)
+        return False
+    except json.JSONDecodeError:
+        return True
+
+def get_max_start_date():
+    try:
+        mysql_config = {
+            'host': 'localhost',
+            'user': 'TheUserName',
+            'password': 'YourPassword',
+            'database': 'TheDBName'
+        }
+
+        conn = mysql.connector.connect(**mysql_config)
+        cursor = conn.cursor()
+
+        query = "SELECT from_unixtime((MAX(startTime))/1000) start_date FROM dim_match"
+        cursor.execute(query)
+
+        result = cursor.fetchone()
+        max_start_date = result[0] if result[0] is not None else datetime(2023, 8, 2, 0, 0, 0)
+
+        return max_start_date
+
+    except Error as e:
+        print(f"Error: {e}")
+        return datetime(2023, 8, 2, 0, 0, 0)
+
+    finally:
+        if conn.is_connected():
+            cursor.close()
+            conn.close()
+
+def process_data_extract():
+
+    try:
+        mysql_config = {
+            'host': 'localhost',
+            'user': 'TheUserName',
+            'password': 'YourPassword',
+            'database': 'TheDBName'
+        }
+
+        conn = mysql.connector.connect(**mysql_config)
+        cursor = conn.cursor()
+        # Execute the stored procedure sp_extractST
+
+        cursor.callproc('process_assets')
+        # Commit the changes
+        conn.commit()
+        #print("Stored procedure executed successfully")
+
+
+
+    except Error as e:
+        print(f"Error: {e}")
+
+    finally:
+        if conn.is_connected():
+            cursor.close()
+            conn.close()
+
+def pullAssets():
+    mysql_config = {
+        'host': 'localhost',
+        'user': 'TheUserName',
+        'password': 'YourPassword',
+        'database': 'TheDBName'
+    }
+
+    conn = mysql.connector.connect(**mysql_config)
+    cursor = conn.cursor()
+    action = 0
+    
+
+     # Record the start time
+    start_time = time.time()
+
+    url = "https://explorer-api.gala.com/v1/explorer/search"
+    #url = "https://explorer-api.galachain.com/v1/explorer/search"
+    headers = {"Content-Type": "application/json"}
+
+    # Define the start and end dates >> ancla
+    start_date = datetime(2024, 1, 1, 0, 0, 0)
+    #start_date = get_max_start_date()
+    #end_date = datetime.utcnow()
+    end_date = datetime(2024, 1, 28, 23, 59, 59)
+
+    current_date = start_date
+    interval = timedelta(minutes=5)
+    retry = 0
+    blockCnt = 0
+    num_tx = 0
+    while current_date <= end_date:        
+        from_time = current_date.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        to_time = (current_date + interval - timedelta(milliseconds=1)).strftime("%Y-%m-%dT%H:%M:%S.999Z")
+    
+        data = {
+            "search": f"{{from: {from_time}, to: {to_time}}} AND channelName:asset-channel",
+            "limit": 0,
+            "offset": 0
+        }
+        #print(f"search{{from: {from_time}, to: {to_time}}} AND channelName:asset-channel block:{blockCnt} >>  {current_date}")
+
+        response = requests.post(url, json=data, headers=headers)
+
+        #print(data)
+        #print(response.status_code)
+        if response.status_code in [200, 201]:
+            current_date += interval
+            json_response = response.json()
+
+            if len(json_response["data"]["blocks"]) == 0:
+                continue
+        
+            blocks = json_response["data"]["blocks"]
+            for block in blocks:
+                blockCnt = blockCnt + 1
+                action_in_block = 1
+                num_tx = 1
+                #Access the payload -> Data -> blocks -> parsedBlock -> transactions -> actions
+                transactions = block["parsedBlock"]["transactions"]
+                requestor = block["parsedBlock"]["transactions"]
+                bk_isconfig = block["parsedBlock"].get("isConfigurationBlock")
+                for transaction in transactions:
+                    actions = transaction["actions"]
+                    #Block lvl data
+                    blockNumber = block["parsedBlock"].get("blockNumber", "")
+                    createdAt = block["parsedBlock"].get("createdAt", "")
+                    trx_num = transaction.get("id", "")
+                    trx_creator = transaction["creator"].get("name")
+                    tx_creator_type = transaction["creator"].get("mspId")
+                    tx_validation_code = transaction["validationCode"].get("validationCode")
+                    tx_validation_enum = transaction["validationCode"].get("validationEnum")
+                    tx_write = "{}"
+                    # Loop through the actions and extract the desired information
+                    for action in actions:
+                        action_detail = action["args"][1]
+                        action_detail_str = "";
+                        action_type = action["args"][0]
+                        tx_ccresponse = action["chaincodeResponse"].get("payload")
+                        if action_type == "GalaChainToken:BatchBridgeTokenIn":
+                            for write in action["writes"]:
+                                if "GCTB/client" in write.get("key"):
+                                    tx_write = write.get("value")
+                                    #print(tx_write)
+                                    break
+                        if invalid_json(tx_ccresponse):
+                            tx_ccresponse = "{}"
+                        #print(f">>>>>>>>>>>>>>> nueva linea block:{blockNumber} tran:{trx_num}<<<<<<<<<<<<<<<")
+                        #print(action["chaincodeResponse"].get("payload"))
+                        if invalid_json(action_detail):
+                            action_detail_str = action_detail
+                            action_detail = "{}"#"{\"error\":\"respuesta invalida\"}"
+                            #print(action_detail)
+                            #action_detail = "" re.sub('[^0-9a-zA-Z]+', '\"', action_detail)
+                            #print(">" + action_detail + "<")
+                        args = action["args"]
+                    	#ancla
+                        row =[
+                    	blockNumber,
+                    	createdAt,
+                    	trx_num,
+                    	num_tx,
+                    	trx_creator,
+                    	tx_creator_type,
+                    	action_in_block,
+                    	action_type,
+                    	tx_validation_code,
+                    	tx_validation_enum,
+                    	bk_isconfig,
+                    	action_detail,
+                    	tx_ccresponse,
+                    	tx_write,
+                    	action_detail_str
+                    	]
+                        cursor.execute('''
+    INSERT INTO assets_stg(
+        blockNumber, createdAt, tx_number, tx_in_block, tx_creator, tx_creator_type, action_in_block, tx_type, tx_validation_code, tx_validation_enum, bk_isconfig, tx_detail, tx_ccresponse, tx_write, tx_detail_str
+    )
+    VALUES(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+''', row)
+                        conn.commit()
+                        action_in_block = action_in_block + 1
+                    num_tx = num_tx + 1
+            retry = 0
+        elif response.status_code == 502 and retry < 5:
+            print(f"retry:{retry}")
+            retry = retry + 1
+            time.sleep(5)
+        else:
+            print(f"Error {response.status_code} for {from_time} to {to_time}")
+            current_date += interval
+            retry = 0
+            time.sleep(5)
+
+
+    # Record the end time
+    end_time = time.time()
+    conn.close()
+    # Calculate the elapsed time
+    elapsed_time = end_time - start_time
+
+    print(f"Script took {elapsed_time:.2f} seconds to run. Blocks:{blockCnt}")
+
+
+pullAssets()
+#process_data_extract()
+
+

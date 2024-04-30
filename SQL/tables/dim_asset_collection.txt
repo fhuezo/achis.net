@@ -1,0 +1,8 @@
+-- assets.dim_asset_collection definition
+
+CREATE TABLE `dim_asset_collection` (
+  `asset_collection_key` int NOT NULL AUTO_INCREMENT,
+  `asset_collection` varchar(100) DEFAULT NULL,
+  PRIMARY KEY (`asset_collection_key`),
+  KEY `ix_asset_collection_name` (`asset_collection`)
+) ENGINE=InnoDB AUTO_INCREMENT=27 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

@@ -1,0 +1,28 @@
+-- assets.fact_gc_transactions definition
+
+CREATE TABLE `fact_gc_transactions` (
+  `tran_key` bigint NOT NULL AUTO_INCREMENT,
+  `block_number` bigint DEFAULT NULL,
+  `created_at` datetime(3) DEFAULT NULL,
+  `tx_number` varchar(100) DEFAULT NULL,
+  `tx_in_block` int DEFAULT NULL,
+  `tx_creator_key` bigint DEFAULT NULL,
+  `tx_creator_type_key` int DEFAULT NULL,
+  `tx_type_key` bigint DEFAULT NULL,
+  `bk_isconfig` varchar(10) DEFAULT NULL,
+  `tx_subtype` varchar(100) DEFAULT NULL,
+  `tx_recipient_key` bigint DEFAULT NULL,
+  `tx_sender_key` bigint DEFAULT NULL,
+  `quantity` decimal(26,8) DEFAULT NULL,
+  `asset_type_key` int DEFAULT NULL,
+  `asset_category_key` int DEFAULT NULL,
+  `instance` varchar(50) DEFAULT NULL,
+  `asset_collection_key` int DEFAULT NULL,
+  `asset_rarity_key` int DEFAULT NULL,
+  `traceid` varchar(50) DEFAULT NULL,
+  `tx_validation_code` varchar(50) DEFAULT NULL,
+  `tx_validation_enum` varchar(50) DEFAULT NULL,
+  PRIMARY KEY (`tran_key`),
+  KEY `ix_fct_tran_createdat` (`created_at`),
+  KEY `ix_fct_tran_wallets` (`tx_recipient_key`,`tx_sender_key`,`tx_creator_key`)
+) ENGINE=InnoDB AUTO_INCREMENT=3412783 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

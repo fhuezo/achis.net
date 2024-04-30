@@ -1,0 +1,8 @@
+-- assets.dim_tx_creator_type definition
+
+CREATE TABLE `dim_tx_creator_type` (
+  `creator_key` int NOT NULL AUTO_INCREMENT,
+  `tx_creator_type` varchar(100) DEFAULT NULL,
+  PRIMARY KEY (`creator_key`),
+  KEY `ix_creator_type_name` (`tx_creator_type`)
+) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

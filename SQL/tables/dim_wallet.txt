@@ -1,0 +1,9 @@
+-- assets.dim_wallet definition
+
+CREATE TABLE `dim_wallet` (
+  `wallet_key` bigint NOT NULL AUTO_INCREMENT,
+  `wallet` varchar(50) DEFAULT NULL,
+  `created_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`wallet_key`),
+  KEY `ix_wallet_acc` (`wallet`)
+) ENGINE=InnoDB AUTO_INCREMENT=139423 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

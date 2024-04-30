@@ -1,0 +1,8 @@
+-- assets.dim_asset_type definition
+
+CREATE TABLE `dim_asset_type` (
+  `asset_type_key` int NOT NULL AUTO_INCREMENT,
+  `asset_type` varchar(100) DEFAULT NULL,
+  PRIMARY KEY (`asset_type_key`),
+  KEY `ix_asset_type_name` (`asset_type`)
+) ENGINE=InnoDB AUTO_INCREMENT=1334 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

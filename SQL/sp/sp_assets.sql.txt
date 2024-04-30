@@ -1,0 +1,362 @@
+-- DROP PROCEDURE process_assets
+delimiter $$
+CREATE PROCEDURE process_assets()
+	BEGIN
+
+DROP TEMPORARY TABLE IF EXISTS stg_insert;
+CREATE TEMPORARY TABLE stg_insert(
+  blocknumber int,
+  createdat datetime(3),
+  tx_number varchar(100),
+  tx_in_block int,
+  tx_creator varchar(100),
+  tx_creator_type varchar(50),
+  tx_type varchar(100),
+  bk_isconfig varchar(10),
+  tx_subtype VARCHAR(100),
+  Recipient VARCHAR(100),
+  Sender VARCHAR(100),
+  Quantity longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin,
+  Type VARCHAR(100),
+  category VARCHAR(100),
+  instance longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin,
+  collection VARCHAR(100),
+  Rarity longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin,
+  TraceId longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin,
+  tx_detail json,
+  tx_ccresponse json,
+  tx_validation_code varchar(50),
+  tx_validation_enum varchar(100),
+  tx_creator_key bigint unsigned,
+  tx_sender_key bigint unsigned,
+  tx_recipient_key bigint unsigned,
+  tx_creator_type_key bigint unsigned,
+  tx_type_key bigint unsigned,
+  asset_rarity_key bigint unsigned,
+  asset_type_key bigint unsigned,
+  asset_category_key bigint unsigned,
+  asset_collection_key bigint unsigned,
+  KEY ix_tmptran_createdat (createdat),
+  KEY ix_tmp_wca1 (tx_recipient_key),
+  KEY ix_tmp_wca2 (tx_sender_key),
+  KEY ix_tmp_wca3 (tx_creator_key),
+  KEY ix_tmptran_type (Type),
+  KEY ix_tmptran_cat (category),
+  KEY ix_tmptran_coll (collection)
+);
+
+INSERT INTO stg_insert
+select blocknumber, CONVERT(REPLACE(REPLACE(createdAt, 'T', ' '), 'Z', ''), datetime(3)) AS createdat, tx_number, tx_in_block, tx_creator, tx_creator_type, tx_type, bk_isconfig
+, CASE 
+	WHEN tx_type = 'GalaChainToken:GrantAllowance' THEN  IFNULL(tx_detail->>"$.uniqueKey", CONCAT('AllowanceTypes:', JSON_LENGTH(tx_detail->>"$.quantities[0].quantity")))
+	WHEN tx_ccresponse->>"$.Status" = '0' THEN 'insuficient allowances/balance'
+	END AS 'tx_subtype'
+, CASE
+	WHEN tx_type = 'GalaChainToken:FulfillMintAllowance' THEN tx_ccresponse->>"$.Data[0].grantedTo"
+    WHEN tx_type = 'GalaChainToken:MintToken' THEN tx_detail->>"$.owner"
+    WHEN tx_type = 'GalaChainToken:RequestMintAllowance' THEN tx_ccresponse->>"$.Data.requests[0].owner"
+    WHEN tx_type = 'GalaChainToken:GrantAllowance' THEN IFNULL(tx_ccresponse->>"$.Data[0].grantedTo", tx_detail->>"$.owner")
+	ELSE IFNULL(tx_detail->>"$.mintDtos[0].owner", tx_detail->>"$.mintDto.mintDtos[0].owner")
+	END
+    AS Recipient
+, tx_creator AS Sender
+, CASE
+	WHEN tx_type = 'GalaChainToken:FulfillMintAllowance' THEN tx_ccresponse->>"$.Data[0].quantity"
+    WHEN tx_type = 'GalaChainToken:MintToken' THEN tx_detail->>"$.quantity"
+	WHEN tx_type = 'GalaChainToken:BurnTokens' THEN tx_ccresponse->>"$.Data[0].quantity"
+    WHEN tx_type = 'GalaChainToken:GrantAllowance' THEN tx_ccresponse->>"$.Data[0].quantity"
+	ELSE IFNULL(tx_detail->>"$.mintDtos[0].quantity", tx_detail->>"$.mintDto.mintDtos[0].quantity")
+    END
+    AS Quantity
+, CASE
+	WHEN tx_type = 'GalaChainToken:FulfillMintAllowance' THEN tx_ccresponse->>"$.Data[0].type"
+    WHEN tx_type = 'GalaChainToken:MintToken' THEN tx_detail->>"$.tokenClass.type"
+	ELSE tx_ccresponse->>"$.Data[0].type"
+    END AS Type  
+, CASE
+	WHEN tx_type = 'GalaChainToken:MintToken' THEN tx_detail->>"$.tokenClass.category"
+	ELSE tx_ccresponse->>"$.Data[0].category"
+    END AS category
+, CASE
+	WHEN tx_type = 'GalaChainToken:FulfillMintAllowance' THEN tx_ccresponse->>"$.Data[0].instance"
+    WHEN tx_type = 'GalaChainToken:MintToken' AND tx_ccresponse->>"$.Status" = '0' THEN -1
+	ELSE tx_ccresponse->>"$.Data[0].instance"
+    END AS instance
+, CASE
+	WHEN tx_type = 'GalaChainToken:MintToken' THEN tx_detail->>"$.tokenClass.collection"
+	ELSE tx_ccresponse->>"$.Data[0].collection"
+    END AS collection
+, CASE
+	WHEN tx_type = 'GalaChainToken:MintToken' THEN tx_detail->>"$.tokenClass.additionalKey"
+    ELSE tx_ccresponse->>"$.Data[0].additionalKey"
+    END AS Rarity
+, tx_detail->>"$.trace.traceId" AS TraceId
+, tx_detail
+, tx_ccresponse
+, tx_validation_code
+, tx_validation_enum
+, CAST(NULL AS  UNSIGNED INTEGER) AS tx_creator_key, CAST(NULL AS UNSIGNED INTEGER) AS tx_sender_key, CAST(NULL AS UNSIGNED INTEGER) AS tx_recipient_key
+, CAST(NULL AS  UNSIGNED INTEGER) AS tx_creator_type_key, CAST(NULL AS  UNSIGNED INTEGER) AS tx_type_key, CAST(NULL AS  UNSIGNED INTEGER) asset_rarity_key
+, CAST(NULL AS  UNSIGNED INTEGER) AS asset_type_key, CAST(NULL AS  UNSIGNED INTEGER) AS asset_category_key, CAST(NULL AS  UNSIGNED INTEGER) AS asset_collection_key
+FROM assets_stg
+WHERE tx_type IN ('GalaChainToken:BatchMintToken', 'GalaChainToken:BurnAndMint', 'GalaChainToken:FulfillMintAllowance', 'GalaChainToken:MintToken', 'GalaChainToken:RequestMintAllowance', 'GalaChainToken:BurnTokens', 'GalaChainToken:GrantAllowance')
+
+UNION ALL
+
+SELECT blocknumber, CONVERT(REPLACE(REPLACE(createdAt, 'T', ' '), 'Z', ''), datetime(3)) AS createdat, tx_number, tx_in_block, tx_creator, tx_creator_type, tx_type, bk_isconfig
+, CASE WHEN tx_ccresponse->>"$.Status" = '0' THEN 'insuficient allowances/balance' END AS 'tx_subtype'
+, CASE
+	WHEN tx_type = 'GalaChainToken:FulfillMintAllowance' THEN tx_ccresponse->>"$.Data[0].grantedTo"
+    WHEN tx_type = 'GalaChainToken:MintToken' THEN tx_detail->>"$.owner"
+    WHEN tx_type = 'GalaChainToken:RequestMintAllowance' THEN tx_ccresponse->>"$.Data.requests[0].owner"
+    WHEN tx_type like '%lock%' THEN NULL -- cambio
+	ELSE IFNULL(tx_detail->>"$.mintDtos[0].owner", tx_detail->>"$.mintDto.mintDtos[0].owner")
+	END
+    AS Recipient
+, tx_creator AS Sender
+, CASE WHEN tx_type LIKE '%locktokens%' THEN JSON_LENGTH(tx_detail->>"$.tokenInstances") -- cambio
+	ELSE tx_detail->>"$.tokenInstances.quantity"
+    END AS Quantity
+, CASE
+	WHEN tx_type = 'GalaChainToken:FulfillMintAllowance' THEN tx_ccresponse->>"$.Data[0].type"
+    WHEN tx_type = 'GalaChainToken:MintToken' THEN tx_detail->>"$.tokenClass.type"
+    WHEN tx_type like '%lock%' THEN NULL -- cambio
+	ELSE tx_ccresponse->>"$.Data[0].type"
+    END AS Type  
+, CASE
+	WHEN tx_type = 'GalaChainToken:MintToken' THEN tx_detail->>"$.tokenClass.category"
+    WHEN tx_type like '%lock%' THEN NULL -- cambio
+	ELSE tx_ccresponse->>"$.Data[0].category"
+    END AS category
+, CASE
+	WHEN tx_type = 'GalaChainToken:FulfillMintAllowance' THEN tx_ccresponse->>"$.Data[0].instance"
+    WHEN tx_type = 'GalaChainToken:MintToken' AND tx_ccresponse->>"$.Status" = '0' THEN -1
+    WHEN tx_type like '%lock%' THEN NULL -- cambio
+	ELSE tx_ccresponse->>"$.Data[0].instance"
+    END AS instance
+, CASE
+	WHEN tx_type = 'GalaChainToken:MintToken' THEN tx_detail->>"$.tokenClass.collection"
+	ELSE tx_ccresponse->>"$.Data[0].collection"
+    END AS collection
+, CASE
+	WHEN tx_type = 'GalaChainToken:MintToken' THEN tx_detail->>"$.tokenClass.additionalKey"
+    WHEN tx_type like '%lock%' THEN NULL -- cambio
+    ELSE tx_ccresponse->>"$.Data[0].additionalKey"
+    END AS Rarity
+, tx_detail->>"$.trace.traceId" AS TraceId
+, tx_detail
+, tx_ccresponse
+, tx_validation_code
+, tx_validation_enum
+, CAST(NULL AS  UNSIGNED INTEGER) AS tx_creator_key, CAST(NULL AS UNSIGNED INTEGER) AS tx_sender_key, CAST(NULL AS UNSIGNED INTEGER) AS tx_recipient_key
+, CAST(NULL AS  UNSIGNED INTEGER) AS tx_creator_type_key, CAST(NULL AS  UNSIGNED INTEGER) AS tx_type_key, CAST(NULL AS  UNSIGNED INTEGER) asset_rarity_key
+, CAST(NULL AS  UNSIGNED INTEGER) AS asset_type_key, CAST(NULL AS  UNSIGNED INTEGER) AS asset_category_key, CAST(NULL AS  UNSIGNED INTEGER) AS asset_collection_key
+FROM assets_stg
+WHERE tx_type IN ('GalaChainToken:LockTokens', 'GalaChainToken:UnlockTokens')
+
+UNION ALL
+
+SELECT blocknumber, CONVERT(REPLACE(REPLACE(createdAt, 'T', ' '), 'Z', ''), datetime(3)) AS createdat, tx_number, tx_in_block, tx_creator, tx_creator_type, tx_type, bk_isconfig
+, CASE WHEN tx_ccresponse->>"$.Status" = '0' THEN tx_ccresponse->>"$.ErrorKey" END AS 'tx_subtype'
+, tx_detail->>"$.recipient" AS Recipient
+, tx_creator AS Sender
+, tx_detail->>"$.quantity" AS Quantity
+, tx_detail->>"$.tokenInstance.type" AS Type  
+, tx_detail->>"$.tokenInstance.category" AS category
+, tx_detail->>"$.tokenInstance.instance" AS  instance
+, tx_detail->>"$.tokenInstance.collection"  AS collection
+, tx_detail->>"$.tokenInstance.additionalKey" AS Rarity
+, tx_detail->>"$.trace.traceId" AS TraceId
+, tx_detail
+, tx_ccresponse
+, tx_validation_code
+, tx_validation_enum
+, CAST(NULL AS  UNSIGNED INTEGER) AS tx_creator_key, CAST(NULL AS UNSIGNED INTEGER) AS tx_sender_key, CAST(NULL AS UNSIGNED INTEGER) AS tx_recipient_key
+, CAST(NULL AS  UNSIGNED INTEGER) AS tx_creator_type_key, CAST(NULL AS  UNSIGNED INTEGER) AS tx_type_key, CAST(NULL AS  UNSIGNED INTEGER) asset_rarity_key
+, CAST(NULL AS  UNSIGNED INTEGER) AS asset_type_key, CAST(NULL AS  UNSIGNED INTEGER) AS asset_category_key, CAST(NULL AS  UNSIGNED INTEGER) AS asset_collection_key
+FROM assets_stg
+WHERE tx_type IN ('GalaChainToken:RequestTokenBridgeOut', 'GalaChainToken:BridgeTokenOut', 'GalaChainToken:BatchBridgeTokenIn')
+
+UNION ALL
+
+SELECT blocknumber, CONVERT(REPLACE(REPLACE(createdAt, 'T', ' '), 'Z', ''), datetime(3)) AS createdat, tx_number, tx_in_block, tx_creator, tx_creator_type, tx_type, bk_isconfig
+, NULL 'tx_subtype'
+, tx_detail->>"$.to" Recipient
+, tx_detail->>"$.from"
+, tx_detail->>"$.quantity" AS Quantity
+, tx_detail->>"$.tokenInstance.type" AS Type  
+, tx_detail->>"$.tokenInstance.category" AS category
+, tx_detail->>"$.tokenInstance.instance" AS instance
+, tx_detail->>"$.tokenInstance.collection" AS collection
+, tx_detail->>"$.tokenInstance.additionalKey" AS Rarity
+, tx_detail->>"$.trace.traceId" AS TraceId
+, tx_detail
+, tx_ccresponse
+, tx_validation_code
+, tx_validation_enum
+, CAST(NULL AS  UNSIGNED INTEGER) AS tx_creator_key, CAST(NULL AS UNSIGNED INTEGER) AS tx_sender_key, CAST(NULL AS UNSIGNED INTEGER) AS tx_recipient_key
+, CAST(NULL AS  UNSIGNED INTEGER) AS tx_creator_type_key, CAST(NULL AS  UNSIGNED INTEGER) AS tx_type_key, CAST(NULL AS  UNSIGNED INTEGER) asset_rarity_key
+, CAST(NULL AS  UNSIGNED INTEGER) AS asset_type_key, CAST(NULL AS  UNSIGNED INTEGER) AS asset_category_key, CAST(NULL AS  UNSIGNED INTEGER) AS asset_collection_key
+FROM assets_stg
+WHERE tx_type NOT IN
+(
+	'GalaChainToken:BatchMintToken'
+	, 'GalaChainToken:BurnAndMint'
+	, 'GalaChainToken:FulfillMintAllowance'
+	, 'GalaChainToken:MintToken'
+	, 'GalaChainToken:RequestMintAllowance'
+	, 'GalaChainToken:BurnTokens'
+	, 'GalaChainToken:GrantAllowance'
+	,'GalaChainToken:LockTokens'
+	, 'GalaChainToken:UnlockTokens'
+	, 'GalaChainToken:RequestTokenBridgeOut'
+	, 'GalaChainToken:BridgeTokenOut'
+    , 'GalaChainToken:BatchBridgeTokenIn'
+);
+
+CREATE INDEX ix_tmp_wca1 ON stg_insert(sender, createdat);
+CREATE INDEX ix_tmp_wca1 ON stg_insert(recipient, createdat);
+CREATE INDEX ix_tmp_wca1 ON stg_insert(tx_creator, createdat);
+
+DROP TEMPORARY TABLE IF EXISTS stg_wallet;
+CREATE TEMPORARY TABLE stg_wallet AS
+	SELECT sender as wallet, min(createdat) as created_at
+	FROM stg_insert si
+	LEFT JOIN dim_wallet d ON d.wallet = si.sender
+	WHERE d.wallet_key IS NULL
+	AND sender IS NOT NULL
+	GROUP BY sender;
+
+INSERT INTO stg_wallet(wallet, created_at)
+	SELECT recipient, min(createdat)
+	FROM stg_insert si
+	LEFT JOIN dim_wallet d ON d.wallet = si.recipient
+	WHERE d.wallet_key IS NULL
+	AND recipient IS NOT NULL
+	GROUP BY recipient;
+
+INSERT INTO stg_wallet(wallet, created_at)
+	SELECT tx_creator, min(createdat)
+	FROM stg_insert si
+	LEFT JOIN dim_wallet d ON d.wallet = si.tx_creator
+	WHERE d.wallet_key IS NULL
+	AND tx_creator IS NOT NULL
+	GROUP BY tx_creator;
+
+INSERT INTO dim_wallet (wallet, created_at)
+SELECT wallet, MIN(created_at) created_at FROM stg_wallet GROUP BY wallet;
+
+UPDATE stg_insert
+JOIN dim_wallet dw ON dw.wallet = stg_insert.tx_creator
+SET tx_creator_key = dw.wallet_key;
+
+UPDATE stg_insert
+JOIN dim_wallet dw ON dw.wallet = stg_insert.sender
+SET stg_insert.tx_sender_key = dw.wallet_key;
+
+UPDATE stg_insert
+JOIN dim_wallet dw ON dw.wallet = stg_insert.recipient
+SET stg_insert.tx_recipient_key = dw.wallet_key;
+
+INSERT INTO dim_tx_creator_type (tx_creator_type)
+SELECT DISTINCT stg.tx_creator_type
+FROM stg_insert stg
+LEFT JOIN dim_tx_creator_type dct ON dct.tx_creator_type = stg.tx_creator_type
+WHERE dct.creator_key IS NULL
+AND stg.tx_creator_type IS NOT NULL;
+
+UPDATE stg_insert
+JOIN dim_tx_creator_type dct ON dct.tx_creator_type = stg_insert.tx_creator_type
+SET stg_insert.tx_creator_type_key = dct.creator_key;
+
+INSERT INTO dim_tx_type (tx_type)
+SELECT DISTINCT stg.tx_type
+FROM stg_insert stg
+LEFT JOIN dim_tx_type dtt ON dtt.tx_type = stg.tx_type
+WHERE dtt.tx_type_key IS NULL
+AND stg.tx_type IS NOT NULL;
+
+UPDATE stg_insert
+JOIN dim_tx_type dtt ON dtt.tx_type = stg_insert.tx_type
+SET stg_insert.tx_type_key = dtt.tx_type_key;
+
+INSERT INTO dim_asset_type (asset_type)
+SELECT DISTINCT stg.Type
+FROM stg_insert stg
+LEFT JOIN dim_asset_type dat ON dat.asset_type = stg.type
+WHERE dat.asset_type_key IS NULL
+AND stg.type IS NOT NULL;
+
+UPDATE stg_insert
+JOIN dim_asset_type dat ON dat.asset_type = stg_insert.type
+SET stg_insert.asset_type_key = dat.asset_type_key;
+
+INSERT INTO dim_asset_category (asset_category)
+SELECT DISTINCT stg.category
+FROM stg_insert stg
+LEFT JOIN dim_asset_category dac ON dac.asset_category = stg.type
+WHERE dac.asset_category_key IS NULL
+AND stg.category IS NOT NULL;
+
+UPDATE stg_insert
+INNER JOIN dim_asset_category dac ON dac.asset_category = stg_insert.category
+SET stg_insert.asset_category_key = dac.asset_category_key;
+
+INSERT INTO dim_asset_collection (asset_collection)
+SELECT DISTINCT stg.collection
+FROM stg_insert stg
+LEFT JOIN dim_asset_collection dac ON dac.asset_collection = stg.collection
+WHERE dac.asset_collection_key IS NULL
+AND stg.collection IS NOT NULL;
+
+UPDATE stg_insert
+INNER JOIN dim_asset_collection dac ON dac.asset_collection = stg_insert.collection
+SET stg_insert.asset_collection_key = dac.asset_collection_key;
+
+INSERT INTO dim_asset_rarity (asset_rarity)
+SELECT DISTINCT stg.rarity
+FROM stg_insert stg
+LEFT JOIN dim_asset_rarity dar ON dar.asset_rarity = stg.rarity
+WHERE dar.asset_rarity_key IS NULL
+AND stg.rarity IS NOT NULL;
+
+UPDATE stg_insert
+INNER JOIN dim_asset_rarity dar ON dar.asset_rarity = stg_insert.rarity
+SET stg_insert.asset_rarity_key = dar.asset_rarity_key;
+
+INSERT INTO fact_gc_transactions
+(block_number, created_at, tx_number, tx_in_block, tx_creator_key, tx_creator_type_key, tx_type_key, bk_isconfig, tx_subtype, tx_recipient_key, tx_sender_key, quantity
+, asset_type_key, asset_category_key, instance, asset_collection_key, asset_rarity_key, traceid, tx_validation_code, tx_validation_enum)
+SELECT
+	blocknumber
+    , createdat
+    , tx_number
+    , tx_in_block
+    , tx_creator_key
+    , tx_creator_type_key
+    , tx_type_key
+    , bk_isconfig
+    , left(tx_subtype, 100)
+    , tx_recipient_key
+    , tx_sender_key
+    , CAST(Quantity AS DECIMAL(26,8)) AS quantity
+    , asset_type_key
+    , asset_category_key
+    , instance
+    , asset_collection_key
+    , asset_rarity_key
+    , traceid
+    , tx_validation_code
+    , tx_validation_enum
+FROM stg_insert;
+
+INSERT INTO gc_raw_data
+(blocknumber, tx_in_block, tx_detail, tx_ccresponse, tx_detail_str)
+SELECT
+blocknumber, tx_in_block, COMPRESS(tx_detail), COMPRESS(tx_ccresponse), COMPRESS(tx_detail_str)
+FROM assets_stg;
+
+TRUNCATE TABLE assets_stg;
+
+END$$
+delimiter ;

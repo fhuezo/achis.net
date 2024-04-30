@@ -1,0 +1,8 @@
+-- assets.dim_asset_category definition
+
+CREATE TABLE `dim_asset_category` (
+  `asset_category_key` int NOT NULL AUTO_INCREMENT,
+  `asset_category` varchar(100) DEFAULT NULL,
+  PRIMARY KEY (`asset_category_key`),
+  KEY `ix_asset_category_name` (`asset_category`)
+) ENGINE=InnoDB AUTO_INCREMENT=704 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

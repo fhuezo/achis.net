@@ -1,0 +1,1 @@
+This is the code and dashboards I created during the hackathon, the SQL files are working on top of everything else I built previous to the hackathon which is everything not in the "hackathon" folder.
